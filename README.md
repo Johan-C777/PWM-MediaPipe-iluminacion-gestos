@@ -2,24 +2,181 @@
 
 **Estudiante:** Johan Andrés Canchala Arenas  
 **Asignatura:** Microcontroladores / Sistemas Embebidos  
-**Universidad Militar Nueva Granada**  
+**Universidad:** Universidad Militar Nueva Granada  
 
 ---
 
 ## 1. Descripción General del Proyecto
-Este proyecto implementa un sistema interactivo de visión artificial y control embebido capaz de reconocer gestos de la mano en tiempo real mediante una webcam utilizando **MediaPipe Hand Landmarker** y **OpenCV**. Los gestos reconocidos se traducen en comandos seriales enviados a un microcontrolador **ESP32**, el cual modula la intensidad de un conjunto de LEDs mediante modulación por ancho de pulsos (**PWM**) o activa secuencias automáticas no bloqueantes administradas por una máquina de estados con `millis()`.
+
+Este proyecto consiste en el diseño e implementación de un sistema de control de iluminación embebido interactivo, integrando visión artificial en tiempo real con un microcontrolador ESP32. 
+
+A través de una cámara web, una aplicación desarrollada en Python procesa el flujo de video utilizando **MediaPipe Hand Landmarker** y **OpenCV** para identificar la postura y gestos de la mano. Los gestos clasificados se traducen en tramas seriales de un solo byte que se envían por UART hacia la placa **ESP32**, la cual realiza dos tipos de tareas:
+1. **Control de Luminosidad por PWM:** Ajuste fino del Duty Cycle en los LEDs de acuerdo con el porcentaje indicado por el gesto.
+2. **Interrupciones de Software (Secuencias Dinámicas):** Ejecución de rutinas de iluminación predefinidas (Modos 1 y 2) gobernadas por una máquina de estados no bloqueante con `millis()`, garantizando que el ESP32 mantenga la escucha serial activa en todo momento sin pausar la CPU con `delay()`.
 
 ---
 
-## 2. Diagrama de Bloques y Arquitectura del Sistema
+## 2. Diagramas de Bloques y Arquitectura del Sistema
+
+### 2.1 Diagrama de Bloques General (Flujo de Datos)
 
 ```mermaid
 graph LR
-    A[Webcam PC] -->|Frames de Video| B(MediaPipe / OpenCV)
-    B -->|Clasificación de Gestos| C(Controlador Serial Python)
-    C -->|Byte ASCII 9600 Baud| D[UART / Puerto Serial USB]
-    D -->|Lectura no bloqueante| E[ESP32 Firmware]
-    E -->|Salida PWM 30%| F[LED Amarillo GPIO 25]
-    E -->|Salida PWM 70%| G[LED Azul GPIO 26]
-    E -->|Salida PWM 100%| H[LED Rojo GPIO 27]
-    E -->|Máquina de Estados millis| I[Secuencias 1 y 2]
+    subgraph Procesamiento en PC
+        A[Webcam 640x480] -->|Frames BGR| B[MediaPipe Landmarker]
+        B -->|21 Puntos 3D| C[Clasificador de Gestos Python]
+        C -->|Byte ASCII Anti-flood| D[Controlador PySerial]
+    end
+
+    subgraph Enlace Físico
+        D -->|USB UART 9600 bps| E[Puerto Serial ESP32]
+    end
+
+    subgraph Control Embebido ESP32
+        E -->|Serial.read| F{Máquina de Estados}
+        F -->|CMD A: 30%| G[LEDC PWM Canal 0 / GPIO 25]
+        F -->|CMD B: 70%| H[LEDC PWM Canal 1 / GPIO 26]
+        F -->|CMD C: 100%| I[LEDC PWM Canal 2 / GPIO 27]
+        F -->|CMD D / E| J[Rutina millis sin bloqueo]
+        J -.-> G
+        J -.-> H
+        J -.-> I
+    end
+
+    subgraph Salidas Físicas
+        G --> K[LED Amarillo]
+        H --> L[LED Azul]
+        I --> M[LED Rojo]
+    end
+```
+
+### 2.2 Explicación Modular
+* **Módulo de Adquisición y Visión (Python):** Captura fotogramas a 30 FPS, normaliza el espacio de color a RGB y detecta las coordenadas de los 21 puntos articulados de la mano. Evalúa la extensión de cada dedo comparando las posiciones relativas entre las puntas (*TIPS*) y las articulaciones intermedias (*PIPS*), además de estimar la orientación del pulgar mediante vectores de desplazamiento relativo al punto MCP.
+* **Módulo de Comunicación Serial:** Empaqueta el gesto detectado en un byte ASCII (`'A'`, `'B'`, `'C'`, `'D'`, `'E'`) y lo despacha por el puerto COM correspondiente. Incorpora un mecanismo de filtrado temporal anti-inundación (`SEND_DELAY = 0.15 s`) para no saturar el buffer UART del microcontrolador.
+* **Módulo de Periférico PWM (ESP32):** Basado en el subsistema LEDC de la API de ESP32 (Core >= 3.x), operando con una resolución de 8 bits (valores enteros de ciclo de trabajo de 0 a 255) a una frecuencia de portadora de 5 kHz para suprimir cualquier parpadeo perceptible.
+* **Módulo de Secuencias (Gestión de Interrupciones Lógicas):** Diseñado con un enfoque de concurrencia cooperativa; utiliza variables de marca de tiempo (`seqTimestamp`) y contadores de paso (`seqPaso`). Si mientras se ejecuta una secuencia ingresa un nuevo byte en `Serial.available()`, la máquina conmuta inmediatamente de modo sin esperar a que termine el ciclo actual.
+
+---
+
+## 3. Arquitectura Orientada a Pines (Pinout y Hardware)
+
+### 3.1 Diagrama de Conexión de Pines
+
+```mermaid
+flowchart TD
+    subgraph ESP32 NodeMCU
+        G25[GPIO 25 - PWM Output]
+        G26[GPIO 26 - PWM Output]
+        G27[GPIO 27 - PWM Output]
+        GND[Pin GND - Ground]
+    end
+
+    subgraph Acondicionamiento
+        R1[Resistencia 220 Ohm]
+        R2[Resistencia 220 Ohm]
+        R3[Resistencia 220 Ohm]
+    end
+
+    subgraph Actuadores Optoelectronicos
+        LED_Y[LED Amarillo - 30%]
+        LED_B[LED Azul - 70%]
+        LED_R[LED Rojo - 100%]
+    end
+
+    G25 --> R1 --> LED_Y --> GND
+    G26 --> R2 --> LED_B --> GND
+    G27 --> R3 --> LED_R --> GND
+```
+
+### 3.2 Tabla de Mapeo de Hardware
+| Componente Físico | Pin ESP32 (GPIO) | Tipo de Señal | Nivel Lógico / Rango | Función en el Sistema |
+| :--- | :---: | :---: | :---: | :--- |
+| **LED Amarillo** | GPIO 25 | Salida LEDC PWM | 3.3V / Duty 0-255 | Señalización de 30% de intensidad (CMD `'A'`) |
+| **LED Azul** | GPIO 26 | Salida LEDC PWM | 3.3V / Duty 0-255 | Señalización de 70% de intensidad (CMD `'B'`) |
+| **LED Rojo** | GPIO 27 | Salida LEDC PWM | 3.3V / Duty 0-255 | Señalización de 100% de intensidad (CMD `'C'`) |
+| **Resistencias (x3)** | - | Pasivo (220 Ohm) | - | Limitación de corriente de salida (protección GPIO) |
+| **GND Común** | GND | Referencia | 0V | Cátodo común para retorno del circuito |
+| **Conexión Serial** | USB (UART0) | Comunicación | 9600 Baudios, 8N1 | Recepción de comandos de control desde PC |
+
+---
+
+## 4. Matriz de Gestos y Lógica de Activación
+
+| Gesto Manual | Criterio Geométrico | Byte | Intensidad / Acción | Comportamiento en Placa |
+| :--- | :--- | :---: | :---: | :--- |
+| **Puño Cerrado** | Ningún dedo extendido; pulgar neutro/cerrado | `'A'` | **30% Intensidad** | LED Amarillo ON (`Duty = 77`), demás LEDs en 0. |
+| **Señal de Paz (V)** | Índice y Medio extendidos; Anular y Meñique cerrados | `'B'` | **70% Intensidad** | LED Azul ON (`Duty = 179`), demás LEDs en 0. |
+| **Mano Abierta** | Los 5 dedos completamente extendidos | `'C'` | **100% Intensidad** | LED Rojo ON (`Duty = 255`), demás LEDs en 0. |
+| **Pulgar hacia Abajo** | 4 dedos cerrados, vector dY del pulgar > 0 | `'D'` | **Secuencia 1 (Modo 1)** | Rotación cíclica rápida entre los 3 LEDs y destello conjunto final. |
+| **Pulgar hacia Arriba** | 4 dedos cerrados, vector dY del pulgar < 0 | `'E'` | **Secuencia 2 (Modo 2)** | Rampa progresiva de encendido escalonado y parpadeo sincronizado. |
+
+---
+
+## 5. Evidencias de Funcionamiento
+
+### 5.1 Registro Fotográfico del Montaje y Pruebas
+
+| Montaje General del Circuito y Pinout | Control PWM al 30% (LED Amarillo) |
+| :---: | :---: |
+| ![Montaje Físico](img/FOTO_MONTAJE.jpg) | ![PWM 30 Amarillo](img/FOTO_PWM_30.jpg) |
+| *Conexión de los GPIOs 25, 26, 27 con resistencias limitadoras y GND común.* | *Validación de puño cerrado y activación del 30% de ciclo útil.* |
+
+| Control PWM al 70% (LED Azul) | Control PWM al 100% (LED Rojo) |
+| :---: | :---: |
+| ![PWM 70 Azul](img/FOTO_PWM_70.jpg) | ![PWM 100 Rojo](img/FOTO_PWM_100.jpg) |
+| *Detección de gesto de Paz (V) y respuesta en LED Azul.* | *Detección de mano abierta completa y máxima potencia en LED Rojo.* |
+
+| Interrupción / Secuencia 1 Activa | Interrupción / Secuencia 2 Activa |
+| :---: | :---: |
+| ![Secuencia 1](img/FOTO_SECUENCIA_1.jpg) | ![Secuencia 2](img/FOTO_SECUENCIA_2.jpg) |
+| *Comando de pulgar hacia abajo activando la secuencia luminosa 1.* | *Comando de pulgar arriba activando el patrón dinámico 2.* |
+
+### 5.2 Video Demostrativo del Sistema en Funcionamiento
+
+Demostración continua en tiempo real donde se valida la captura de la webcam, la interfaz con landmarks de MediaPipe, la salida de comandos seriales y la respuesta inmediata del ESP32 sin bloqueos por delay:
+
+▶️ **[HAGA CLIC AQUÍ PARA VER EL VIDEO DEMOSTRATIVO EN YOUTUBE](https://www.youtube.com/watch?v=TU_ENLACE_AQUI)**
+
+---
+
+## 6. Estructura del Repositorio
+
+```text
+├── esp32_gesture_leds.ino   # Firmware en C++ para ESP32 (PWM LEDC + millis)
+├── gesture_control.py       # Script principal en Python (MediaPipe + PySerial)
+├── .gitignore               # Exclusiones de Git
+├── README.md                # Documentación técnica del proyecto
+└── img/                     # Registro fotográfico y diagramas del sistema
+    ├── FOTO_MONTAJE.jpg
+    ├── FOTO_PWM_30.jpg
+    ├── FOTO_PWM_70.jpg
+    ├── FOTO_PWM_100.jpg
+    ├── FOTO_SECUENCIA_1.jpg
+    └── FOTO_SECUENCIA_2.jpg
+```
+
+---
+
+## 7. Instrucciones de Configuración y Despliegue
+
+### 7.1 Carga del Firmware en el ESP32
+1. Abrir `esp32_gesture_leds.ino` en el entorno Arduino IDE.
+2. Seleccionar la placa objetivo: `DOIT ESP32 DEVKIT V1` o `ESP32 Dev Module`.
+3. Seleccionar el puerto COM asignado por el sistema operativo.
+4. Compilar y cargar el código. *(Cerrar el monitor serie de Arduino IDE tras la carga para liberar el puerto COM)*.
+
+### 7.2 Ejecución de la Interfaz en Python
+1. Instalar las dependencias necesarias en la terminal:
+   ```powershell
+   pip install opencv-python mediapipe pyserial numpy
+   ```
+2. Descargar el archivo de modelo oficial `hand_landmarker.task` de MediaPipe y situarlo en el mismo directorio del script.
+3. Verificar en la línea 7 de `gesture_control.py` que el valor de `SERIAL_PORT` coincida con el puerto COM de tu ESP32:
+   ```python
+   SERIAL_PORT = "COM3"  # Modificar si tu puerto es COM4, COM5, etc.
+   ```
+4. Ejecutar el script:
+   ```powershell
+   python gesture_control.py
+   ```
+5. Para detener la ejecución, presionar la tecla **`q`** sobre la ventana de OpenCV.
