@@ -72,9 +72,9 @@ flowchart TD
     end
 
     subgraph Acondicionamiento
-        R1[Resistencia 220 Ohm]
-        R2[Resistencia 220 Ohm]
-        R3[Resistencia 220 Ohm]
+        R1[Resistencia 330 Ohm]
+        R2[Resistencia 330 Ohm]
+        R3[Resistencia 330 Ohm]
     end
 
     subgraph Actuadores Optoelectronicos
@@ -94,7 +94,7 @@ flowchart TD
 | **LED Amarillo** | GPIO 25 | Salida LEDC PWM | 3.3V / Duty 0-255 | Señalización de 30% de intensidad (CMD `'A'`) |
 | **LED Azul** | GPIO 26 | Salida LEDC PWM | 3.3V / Duty 0-255 | Señalización de 70% de intensidad (CMD `'B'`) |
 | **LED Rojo** | GPIO 27 | Salida LEDC PWM | 3.3V / Duty 0-255 | Señalización de 100% de intensidad (CMD `'C'`) |
-| **Resistencias (x3)** | - | Pasivo (220 Ohm) | - | Limitación de corriente de salida (protección GPIO) |
+| **Resistencias (x3)** | - | Pasivo (330 Ω) | - | Limitación de corriente de salida (protección GPIO) |
 | **GND Común** | GND | Referencia | 0V | Cátodo común para retorno del circuito |
 | **Conexión Serial** | USB (UART0) | Comunicación | 9600 Baudios, 8N1 | Recepción de comandos de control desde PC |
 
@@ -116,26 +116,16 @@ flowchart TD
 
 ### 5.1 Registro Fotográfico del Montaje y Pruebas
 
-| Montaje General del Circuito y Pinout | Control PWM al 30% (LED Amarillo) |
-| :---: | :---: |
-| ![Montaje Físico](img/FOTO_MONTAJE.jpg) | ![PWM 30 Amarillo](img/FOTO_PWM_30.jpg) |
-| *Conexión de los GPIOs 25, 26, 27 con resistencias limitadoras y GND común.* | *Validación de puño cerrado y activación del 30% de ciclo útil.* |
-
-| Control PWM al 70% (LED Azul) | Control PWM al 100% (LED Rojo) |
-| :---: | :---: |
-| ![PWM 70 Azul](img/FOTO_PWM_70.jpg) | ![PWM 100 Rojo](img/FOTO_PWM_100.jpg) |
-| *Detección de gesto de Paz (V) y respuesta en LED Azul.* | *Detección de mano abierta completa y máxima potencia en LED Rojo.* |
-
-| Interrupción / Secuencia 1 Activa | Interrupción / Secuencia 2 Activa |
-| :---: | :---: |
-| ![Secuencia 1](img/FOTO_SECUENCIA_1.jpg) | ![Secuencia 2](img/FOTO_SECUENCIA_2.jpg) |
-| *Comando de pulgar hacia abajo activando la secuencia luminosa 1.* | *Comando de pulgar arriba activando el patrón dinámico 2.* |
+| Montaje General del Circuito | Control PWM al 70% (Señal de Paz) | Secuencia 2 Activa (Pulgar Arriba) |
+| :---: | :---: | :---: |
+| ![Montaje Físico](img/Montaje.jpg) | ![PWM 70 Azul](img/Gesto_Paz.png) | ![Secuencia 2](img/Gesto_pulgar_arriba.png) |
+| *Cableado desde GPIOs a protoboard mediante resistores de 330 Ω.* | *Detección de gesto de Paz (V) y respuesta del sistema en el LED Azul.* | *Identificación de pulgar arriba para iniciar degradado y parpadeo sincronizado.* |
 
 ### 5.2 Video Demostrativo del Sistema en Funcionamiento
 
 Demostración continua en tiempo real donde se valida la captura de la webcam, la interfaz con landmarks de MediaPipe, la salida de comandos seriales y la respuesta inmediata del ESP32 sin bloqueos por delay:
 
-▶️ **[HAGA CLIC AQUÍ PARA VER EL VIDEO DEMOSTRATIVO EN YOUTUBE](https://www.youtube.com/watch?v=TU_ENLACE_AQUI)**
+▶️ **[HAGA CLIC AQUÍ PARA VER EL VIDEO DEMOSTRATIVO EN KAPWING](https://www.kapwing.com/w/KlHFMrAOsY)**
 
 ---
 
@@ -147,12 +137,10 @@ Demostración continua en tiempo real donde se valida la captura de la webcam, l
 ├── .gitignore               # Exclusiones de Git
 ├── README.md                # Documentación técnica del proyecto
 └── img/                     # Registro fotográfico y diagramas del sistema
-    ├── FOTO_MONTAJE.jpg
-    ├── FOTO_PWM_30.jpg
-    ├── FOTO_PWM_70.jpg
-    ├── FOTO_PWM_100.jpg
-    ├── FOTO_SECUENCIA_1.jpg
-    └── FOTO_SECUENCIA_2.jpg
+    ├── .gitkeep
+    ├── Gesto_Paz.png
+    ├── Gesto_pulgar_arriba.png
+    └── Montaje.jpg
 ```
 
 ---
@@ -162,7 +150,7 @@ Demostración continua en tiempo real donde se valida la captura de la webcam, l
 ### 7.1 Carga del Firmware en el ESP32
 1. Abrir `esp32_gesture_leds.ino` en el entorno Arduino IDE.
 2. Seleccionar la placa objetivo: `DOIT ESP32 DEVKIT V1` o `ESP32 Dev Module`.
-3. Seleccionar el puerto COM asignado por el sistema operativo.
+3. Seleccionar el puerto COM asignado por el sistema operativo (ej. `COM3`).
 4. Compilar y cargar el código. *(Cerrar el monitor serie de Arduino IDE tras la carga para liberar el puerto COM)*.
 
 ### 7.2 Ejecución de la Interfaz en Python
@@ -171,9 +159,9 @@ Demostración continua en tiempo real donde se valida la captura de la webcam, l
    pip install opencv-python mediapipe pyserial numpy
    ```
 2. Descargar el archivo de modelo oficial `hand_landmarker.task` de MediaPipe y situarlo en el mismo directorio del script.
-3. Verificar en la línea 7 de `gesture_control.py` que el valor de `SERIAL_PORT` coincida con el puerto COM de tu ESP32:
+3. Verificar en la línea 7 de `gesture_control.py` que el valor coincida con el puerto COM de tu placa:
    ```python
-   SERIAL_PORT = "COM3"  # Modificar si tu puerto es COM4, COM5, etc.
+   SERIAL_PORT = "COM3"
    ```
 4. Ejecutar el script:
    ```powershell
