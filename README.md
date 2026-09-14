@@ -1,7 +1,7 @@
 # Actividad 4: Sistema de Control de Iluminación por Gestos de la Mano (ESP32 + MediaPipe)
 
 **Estudiante:** Johan Andrés Canchala Arenas  
-**Asignatura:** Microcontroladores / Sistemas Embebidos  
+**Asignatura:** Microcontroladores
 **Universidad:** Universidad Militar Nueva Granada  
 
 ---
