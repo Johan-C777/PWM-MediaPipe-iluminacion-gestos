@@ -125,7 +125,7 @@ flowchart TD
 
 Demostración continua en tiempo real donde se valida la captura de la webcam, la interfaz con landmarks de MediaPipe, la salida de comandos seriales y la respuesta inmediata del ESP32 sin bloqueos por delay:
 
-▶️ **[HAGA CLIC AQUÍ PARA VER EL VIDEO DEMOSTRATIVO EN KAPWING](https://www.kapwing.com/w/KlHFMrAOsY)**
+▶️ **[HAGA CLIC AQUÍ PARA VER EL VIDEO DEMOSTRATIVO](https://videotourl.com/videos/1790304121915-6d3aaba7-a0e2-45cb-800e-9a4721b0d279.mp4)**
 
 ---
 
